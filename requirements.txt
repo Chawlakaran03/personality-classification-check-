@@ -1,0 +1,5 @@
+streamlit
+py-avataaars
+Pillow
+matplotlib
+google-generativeai
