@@ -5,7 +5,6 @@
 
 ![App Banner](https://img.shields.io/badge/Streamlit-Deployed-green?style=for-the-badge&logo=streamlit)  
 ![Python](https://img.shields.io/badge/Python-3.9%2B-blue?style=flat-square&logo=python)
-![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 
 ---
 
