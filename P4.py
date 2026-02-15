@@ -10,133 +10,124 @@ import google.generativeai as genai
 import json
 import re
 
-# 1. Page Configuration
+# --- 1. SETTINGS & SECRETS ---
 st.set_page_config(page_title="🧠 Personality & Avatar Generator", layout="centered")
 
-# 2. Secure API Setup (GitHub Safe)
+# GitHub pe upload karne ke liye API key secrets se uthayenge
 try:
     if "GOOGLE_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
     else:
         st.error("API Key missing! Add GOOGLE_API_KEY to Streamlit Secrets.")
         st.stop()
-except Exception as e:
-    st.error("Secrets not configured. Create .streamlit/secrets.toml locally.")
+except Exception:
+    st.warning("Running locally? Make sure .streamlit/secrets.toml exists.")
     st.stop()
 
-# 3. Custom CSS for Styling
+# --- 2. STYLING ---
 st.markdown("""
     <style>
-    .main { background: linear-gradient(to right, #f0f2f6, #e0e7ff); padding: 2rem; border-radius: 15px; }
-    .title { text-align: center; font-size: 2.2rem; font-weight: 700; color: #4a4a4a; }
-    .avatar-box, .trait-box { 
-        border-radius: 10px; padding: 1.5rem; 
-        background-color: #ffffffaa; 
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
-        margin-top: 20px; text-align: center;
-    }
+    .main { background: linear-gradient(to bottom right, #f8f9fa, #e9ecef); padding: 20px; border-radius: 15px; }
+    .stButton>button { width: 100%; border-radius: 20px; background-color: #6c5ce7; color: white; }
+    .box { padding: 20px; border-radius: 15px; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
     </style>
 """, unsafe_allow_html=True)
 
-# 4. Gemini API Call
+# --- 3. LOGIC FUNCTIONS ---
+
 def classify_personality_api(sentence):
     try:
-        model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        # Strict prompt taaki JSON hi mile
         prompt = (
-            "Analyze this text for Big Five Personality Traits. "
-            "Return ONLY a clean JSON object with traits as keys and scores (0-100) as values. "
-            "Traits: Openness, Conscientiousness, Extraversion, Agreeableness, Neuroticism. "
-            f"Text: {sentence}"
+            "Analyze the following personality description and provide scores (0-100) for the Big Five traits: "
+            "Openness, Conscientiousness, Extraversion, Agreeableness, Neuroticism. "
+            "Return ONLY a JSON object. No intro, no outro. "
+            f"Description: {sentence}"
         )
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
         return f"Error: {str(e)}"
 
-# 5. Robust JSON Parsing & Plotting
-def plot_personality_traits(traits_text):
+def parse_and_plot(raw_text):
     try:
-        # Regex to find the JSON block even if there is text around it
-        json_match = re.search(r'\{.*\}', traits_text, re.DOTALL)
-        if not json_match:
-            st.error("Could not parse traits. Try a more detailed description.")
+        # Regex: Yeh line saara extra text hata degi aur sirf { ... } nikalegi
+        match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+        if not match:
             return None
-
-        traits_dict = json.loads(json_match.group())
         
-        # Clean data (ensure numbers)
-        names = list(traits_dict.keys())
-        values = [float(str(v).replace('%', '')) for v in traits_dict.values()]
-
-        # Create Plot
-        fig, ax = plt.subplots(figsize=(8, 4))
-        colors = plt.cm.viridis([i/5 for i in range(5)])
-        ax.bar(names, values, color=colors)
+        data = json.loads(match.group())
+        
+        # Plotting
+        fig, ax = plt.subplots(figsize=(7, 4))
+        categories = list(data.keys())
+        values = [float(str(v).replace('%', '')) for v in data.values()]
+        
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8']
+        ax.bar(categories, values, color=colors)
         ax.set_ylim(0, 100)
-        ax.set_ylabel("Score (0-100)")
         plt.xticks(rotation=15)
         st.pyplot(fig)
-        return traits_dict
-    except Exception as e:
-        st.error(f"Visualization Error: {e}")
+        return data
+    except:
         return None
 
-# 6. Avatar Generation Logic
-def create_avatar(sentence, gender):
-    try:
-        s_low = sentence.lower()
-        # Logic for avatar features based on description keywords
-        avatar = pa.PyAvataaar(
-            style=pa.AvatarStyle.CIRCLE if "calm" in s_low else pa.AvatarStyle.TRANSPARENT,
-            skin_color=random.choice(list(pa.SkinColor)),
-            top_type=random.choice([pa.TopType.LONG_HAIR_BOB, pa.TopType.LONG_HAIR_BUN]) if gender == "Female" 
-                     else random.choice([pa.TopType.SHORT_HAIR_FRIZZLE, pa.TopType.SHORT_HAIR_SHORT_CURLY]),
-            hair_color=random.choice(list(pa.HairColor)),
-            mouth_type=pa.MouthType.SMILE if any(x in s_low for x in ["happy", "good", "chill"]) else pa.MouthType.DEFAULT,
-            eye_type=pa.EyesType.HAPPY if "positive" in s_low else pa.EyesType.DEFAULT,
-            clothe_type=pa.ClotheType.HOODIE if "relaxed" in s_low else pa.ClotheType.BLAZER_SHIRT,
-        )
-        return avatar
-    except Exception as e:
-        st.error(f"Avatar Error: {e}")
-        return None
+def make_avatar(gender, desc):
+    s = desc.lower()
+    # Basic logic to vary avatar based on gender
+    top = random.choice([pa.TopType.LONG_HAIR_BOB, pa.TopType.LONG_HAIR_STRAIGHT]) if gender == "Female" \
+          else random.choice([pa.TopType.SHORT_HAIR_FRIZZLE, pa.TopType.SHORT_HAIR_SHORT_CURLY])
+    
+    avatar = pa.PyAvataaar(
+        style=pa.AvatarStyle.CIRCLE,
+        top_type=top,
+        mouth_type=pa.MouthType.SMILE if "happy" in s or "cool" in s else pa.MouthType.DEFAULT,
+        eye_type=pa.EyesType.HAPPY if "positive" in s else pa.EyesType.DEFAULT,
+        skin_color=random.choice(list(pa.SkinColor)),
+        hair_color=random.choice(list(pa.HairColor))
+    )
+    return avatar
 
-def get_image_download_link(filename):
-    with open(filename, "rb") as f:
-        data = base64.b64encode(f.read()).decode()
-    return f'<a href="data:image/png;base64,{data}" download="{filename}" style="padding: 10px; background-color: #6c5ce7; color: white; border-radius: 5px; text-decoration: none;">📥 Download Avatar</a>'
+# --- 4. UI ---
+st.title("🧠 Personality & Avatar AI")
 
-# 7. UI Layout
-st.markdown('<div class="main">', unsafe_allow_html=True)
-st.markdown('<div class="title">🧠 AI Personality & Avatar</div>', unsafe_allow_html=True)
+with st.container():
+    st.markdown('<div class="main">', unsafe_allow_html=True)
+    with st.form("my_form"):
+        name = st.text_input("Name")
+        gender = st.radio("Gender", ["Male", "Female"], horizontal=True)
+        desc = st.text_area("Tell us about yourself...")
+        btn = st.form_submit_button("Generate Magic ✨")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-with st.form("main_form"):
-    name = st.text_input("🧑 Name")
-    gender = st.radio("⚧️ Gender", ["Male", "Female"], horizontal=True)
-    desc = st.text_area("✍️ Describe yourself...")
-    submit = st.form_submit_button("Analyze & Generate")
-
-if submit:
+if btn:
     if name and desc:
-        with st.spinner("Processing..."):
-            # Trait Analysis Section
-            st.markdown('<div class="trait-box">', unsafe_allow_html=True)
-            st.subheader(f"Analysis for {name}")
-            raw_result = classify_personality_api(desc)
-            plot_personality_traits(raw_result)
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            # Avatar Section
-            st.markdown('<div class="avatar-box">', unsafe_allow_html=True)
-            st.subheader("Your Custom Avatar")
-            my_avatar = create_avatar(desc, gender)
-            if my_avatar:
-                temp_name = f"{uuid.uuid4().hex}.png"
-                my_avatar.render_png_file(temp_name)
-                st.image(temp_name, width=250)
-                st.markdown(get_image_download_link(temp_name), unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+        with st.spinner("AI is thinking..."):
+            res_text = classify_personality_api(desc)
+            
+            # Left side: Chart, Right side: Avatar
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown('<div class="box">', unsafe_allow_html=True)
+                st.subheader("Personality Traits")
+                parsed_data = parse_and_plot(res_text)
+                if not parsed_data:
+                    st.error("Could not parse data. Try a longer description!")
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+            with col2:
+                st.markdown('<div class="box">', unsafe_allow_html=True)
+                st.subheader("Your Avatar")
+                av = make_avatar(gender, desc)
+                fname = f"{uuid.uuid4().hex}.png"
+                av.render_png_file(fname)
+                st.image(fname)
+                
+                # Download button
+                with open(fname, "rb") as f:
+                    st.download_button("📥 Download", f, file_name="avatar.png")
+                st.markdown('</div>', unsafe_allow_html=True)
     else:
-        st.warning("Please fill in all details!")
-
-st.markdown('</div>', unsafe_allow_html=True)
+        st.info("Bhai, naam aur description toh daal de!")
