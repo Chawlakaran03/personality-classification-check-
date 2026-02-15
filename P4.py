@@ -10,129 +10,145 @@ import google.generativeai as genai
 import json
 import re
 
-# Streamlit setup
-st.set_page_config(page_title="🧠 Personality & Avatar Generator", layout="centered")
-
-# Custom CSS
-st.markdown("""
-    <style>
-    .main { background: linear-gradient(to right, #f0f2f6, #e0e7ff); padding: 2rem; border-radius: 15px; }
-    .title { text-align: center; font-size: 2.2rem; font-weight: 700; color: #4a4a4a; }
-    .avatar-box, .trait-box { border-radius: 10px; padding: 1rem; background-color: #ffffffaa; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); margin-bottom: 1rem; }
-    </style>
-""", unsafe_allow_html=True)
+# Streamlit config
+st.set_page_config(page_title="🧠 PersonaGen AI", layout="centered")
 
 # API Setup
-GOOGLE_API_KEY = "AIzaSyBv1rh97bKNEfVaaPGWyIZ9HhCX7RkBMeE" # Apni key use karein
-genai.configure(api_key=GOOGLE_API_KEY)
+API_KEY = "AIzaSyBv1rh97bKNEfVaaPGWyIZ9HhCX7RkBMeE" # Apni key yahan confirm karein
+genai.configure(api_key=API_KEY)
+
+# --- HELPER FUNCTIONS ---
+
+def clean_and_flatten_data(raw_text):
+    """AI ke response se sirf numeric data nikalne ke liye logic."""
+    try:
+        # 1. Regex se JSON block extract karna
+        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+        if not json_match:
+            return None
+        
+        data = json.loads(json_match.group())
+        
+        # 2. Agar nested dict hai toh use flatten karna
+        flattened = {}
+        def flatten(d):
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    flatten(v)
+                else:
+                    # Sirf numbers ya numeric strings ko save karna
+                    try:
+                        flattened[k] = float(v)
+                    except (ValueError, TypeError):
+                        continue
+        
+        flatten(data)
+        return flattened
+    except Exception:
+        return None
 
 def classify_personality_api(sentence):
     try:
-        model = genai.GenerativeModel(model_name="gemini-1.5-flash") # Stable model use karein
-        prompt = (f"Classify the following text based on the Big Five Personality Traits. "
-                  f"Provide ONLY a flat JSON object with scores out of 100 for Openness, Conscientiousness, "
-                  f"Extraversion, Agreeableness, and Neuroticism.\n\nText: {sentence}")
+        # gemini-1.5-flash sabse stable hai is task ke liye
+        model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
+        prompt = (f"Analyze this text for Big Five Personality Traits: '{sentence}'. "
+                  f"Return ONLY a flat JSON object with scores 0-100 for: "
+                  f"Openness, Conscientiousness, Extraversion, Agreeableness, Neuroticism.")
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
         return f"Error: {str(e)}"
 
-# FIX: Plotting function with Dict handling
-def plot_personality_traits(traits_input):
+def plot_personality_traits(traits_dict):
+    """Isme ab 'dict' error nahi aayegi."""
+    if not traits_dict:
+        st.warning("Data process nahi ho paya plotting ke liye.")
+        return
+
     try:
-        # Check if input is string, then parse
-        if isinstance(traits_input, str):
-            json_match = re.search(r'\{.*\}', traits_input, re.DOTALL)
-            if not json_match:
-                st.error("AI response format galat hai.")
-                return
-            data = json.loads(json_match.group())
-        else:
-            data = traits_input
-
-        # FLATTENING: Agar AI ne nested dict bheja ho
-        processed_traits = {}
-        for k, v in data.items():
-            if isinstance(v, dict):
-                processed_traits.update(v)
-            else:
-                processed_traits[k] = v
-
-        # Convert to float/int
-        final_scores = {k: float(v) for k, v in processed_traits.items() if isinstance(v, (int, float, str))}
-
-        # Plotting logic
         fig, ax = plt.subplots(figsize=(8, 4))
-        keys = list(final_scores.keys())
-        values = list(final_scores.values())
+        # Custom colors
+        colors = ['#6c5ce7', '#00cec9', '#fab1a0', '#fd79a8', '#55efc4']
         
-        ax.bar(keys, values, color="#6c5ce7")
-        ax.set_ylim(0, 100)
-        ax.set_ylabel("Score")
-        ax.set_title("Big Five Personality Traits")
-        plt.xticks(rotation=45)
+        keys = list(traits_dict.keys())
+        values = list(traits_dict.values())
+        
+        ax.bar(keys, values, color=colors[:len(keys)])
+        ax.set_ylim(0, 105)
+        ax.set_title("Big Five Personality Breakdown", fontsize=12)
+        plt.xticks(rotation=30)
+        
+        # Numbers top par show karne ke liye
+        for i, v in enumerate(values):
+            ax.text(i, v + 2, str(int(v)), ha='center', fontweight='bold')
+            
         st.pyplot(fig)
-
     except Exception as e:
-        st.error(f"Plotting Error: {str(e)}")
+        st.error(f"Visual Error: {e}")
 
-def create_avatar_by_sentence_and_gender(sentence, gender):
+# --- AVATAR LOGIC ---
+
+def create_avatar(description, gender):
     try:
-        options = {
-            'style': 'CIRCLE' if "calm" in sentence.lower() else 'TRANSPARENT',
-            'skin_color': random.choice(["TANNED", "YELLOW", "PALE", "LIGHT", "BROWN", "DARK_BROWN", "BLACK"]),
-            'hair_color': random.choice(["AUBURN", "BLACK", "BLONDE", "BROWN", "RED", "SILVER_GRAY"]),
-            'mouth_type': "SMILE" if "happy" in sentence.lower() else "DEFAULT",
-            'eye_type': "HAPPY" if "positive" in sentence.lower() else "DEFAULT",
-            'eyebrow_type': "DEFAULT",
-            'accessories_type': "SUNGLASSES" if "cool" in sentence.lower() else "DEFAULT",
-            'clothe_type': "HOODIE" if "relaxed" in sentence.lower() else "BLAZER_SHIRT",
-            'clothe_graphic_type': "BAT"
-        }
-
-        top = random.choice(["LONG_HAIR_BOB", "LONG_HAIR_BUN"]) if gender == "Female" else "SHORT_HAIR_FRIZZLE"
-
+        # Basic logic based on description keywords
+        is_happy = any(word in description.lower() for word in ["happy", "excited", "good", "great"])
+        is_chill = any(word in description.lower() for word in ["chill", "calm", "relax", "organized"])
+        
         avatar = pa.PyAvataaar(
-            style=getattr(pa.AvatarStyle, options['style']),
-            skin_color=getattr(pa.SkinColor, options['skin_color']),
-            top_type=getattr(pa.TopType, top),
-            hair_color=getattr(pa.HairColor, options['hair_color']),
-            mouth_type=getattr(pa.MouthType, options['mouth_type']),
-            eye_type=getattr(pa.EyesType, options['eye_type']),
-            accessories_type=getattr(pa.AccessoriesType, options['accessories_type']),
-            clothe_type=getattr(pa.ClotheType, options['clothe_type'])
+            style=pa.AvatarStyle.CIRCLE,
+            skin_color=random.choice(list(pa.SkinColor)),
+            hair_color=random.choice(list(pa.HairColor)),
+            top_type=random.choice([pa.TopType.LONG_HAIR_BOB, pa.TopType.LONG_HAIR_CURVY]) if gender == "Female" else pa.TopType.SHORT_HAIR_SHORT_FLAT,
+            mouth_type=pa.MouthType.SMILE if is_happy else pa.MouthType.DEFAULT,
+            eye_type=pa.EyesType.HAPPY if is_happy else pa.EyesType.DEFAULT,
+            clothe_type=pa.ClotheType.BLAZER_SHIRT if is_chill else pa.ClotheType.HOODIE,
+            accessories_type=pa.AccessoriesType.DEFAULT
         )
         return avatar
     except Exception as e:
-        st.error(f"Avatar Error: {str(e)}")
+        st.error(f"Avatar Logic Error: {e}")
         return None
 
-# --- UI Layout ---
-st.markdown('<div class="main">', unsafe_allow_html=True)
-st.markdown('<div class="title">🧠 PersonaGen AI</div>', unsafe_allow_html=True)
+# --- UI INTERFACE ---
 
-with st.form("user_form"):
-    name = st.text_input("🧑 Name")
-    gender = st.radio("⚧️ Gender", ["Male", "Female"], horizontal=True)
-    description = st.text_area("✍️ Describe yourself...")
-    submitted = st.form_submit_button("Generate")
+st.title("🧠 Personality & Avatar Generator")
+st.write("Apne baare mein likhein aur dekhein AI aapko kaise classify karta hai!")
 
-if submitted:
-    if name and description:
-        with st.spinner("Analyzing..."):
-            traits_raw = classify_personality_api(description)
+with st.form("user_input_form"):
+    name = st.text_input("Name")
+    gender = st.selectbox("Gender", ["Male", "Female"])
+    desc = st.text_area("Tell us about yourself (Personality, habits, etc.)")
+    btn = st.form_submit_button("Generate Everything ✨")
+
+if btn:
+    if name and desc:
+        with st.spinner("AI is thinking..."):
+            # 1. API se data lena
+            raw_response = classify_personality_api(desc)
+            # 2. Flatten aur Clean karna (Error prevention)
+            traits = clean_and_flatten_data(raw_response)
             
-            st.markdown('<div class="trait-box">', unsafe_allow_html=True)
-            st.subheader(f"Results for {name}")
-            plot_personality_traits(traits_raw)
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            st.markdown('<div class="avatar-box">', unsafe_allow_html=True)
-            avatar = create_avatar_by_sentence_and_gender(description, gender)
-            if avatar:
-                filename = f"avatar_{uuid.uuid4().hex}.png"
-                avatar.render_png_file(filename)
-                st.image(Image.open(filename))
-                os.remove(filename) # Cleanup
-            st.markdown('</div>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+            if traits:
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    st.subheader("📊 Your Traits")
+                    plot_personality_traits(traits)
+                    st.json(traits)
+                
+                with col2:
+                    st.subheader("🎭 Your Avatar")
+                    avatar = create_avatar(desc, gender)
+                    if avatar:
+                        path = f"avatar_{uuid.uuid4().hex}.png"
+                        avatar.render_png_file(path)
+                        st.image(path, width=300)
+                        
+                        # Download button
+                        with open(path, "rb") as f:
+                            st.download_button("📥 Download", f, "avatar.png", "image/png")
+                        os.remove(path)
+            else:
+                st.error("AI Response ko parse nahi kiya ja saka. Please try again.")
+    else:
+        st.warning("Please fill name and description.")
