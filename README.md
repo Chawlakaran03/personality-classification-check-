@@ -23,7 +23,7 @@ This AI-driven web application takes a user’s personality description and:
 
 ## 🔗 Live Demo
 
-👉 [Open the App on Streamlit 🚀](https://personality-classification.streamlit.app/)
+👉 [Open the App on Streamlit 🚀](https://personality-classification-check.streamlit.app/)
 
 ## 📂 GitHub Repo
 
