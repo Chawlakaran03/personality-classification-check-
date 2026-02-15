@@ -12,9 +12,15 @@ import os
 # --- APP CONFIG ---
 st.set_page_config(page_title="PersonaGen AI", layout="wide", page_icon="🧠")
 
-# API Setup
-API_KEY = "AIzaSyBv1rh97bKNEfVaaPGWyIZ9HhCX7RkBMeE"
-genai.configure(api_key=API_KEY)
+# --- API SETUP (Using Secrets) ---
+# Local: .streamlit/secrets.toml mein GEMINI_API_KEY daalna
+# Cloud: Streamlit dashboard ke secrets mein GEMINI_API_KEY daalna
+if "GEMINI_API_KEY" in st.secrets:
+    API_KEY = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=API_KEY)
+else:
+    st.error("❌ API Key missing! Please add 'GEMINI_API_KEY' to your Streamlit Secrets.")
+    st.stop()
 
 # --- CSS STYLING ---
 st.markdown("""
@@ -33,26 +39,24 @@ st.markdown("""
 # --- HELPER FUNCTIONS ---
 
 def get_personality_analysis(text):
-    """Fetches Big Five scores from Gemini with robust JSON cleaning."""
+    """Fetches Big Five scores from Gemini."""
     try:
-        # Latest stable free model
+        # 1.5-flash is stable and free
         model = genai.GenerativeModel("gemini-2.5-flash")
         
-        prompt = f"""
+        prompt = f
         Analyze the following text and evaluate the author's personality using the Big Five model.
         Provide scores from 0 to 100 for each trait.
         Text: "{text}"
-        Return ONLY a flat JSON object like this:
+        Return ONLY a flat JSON object:
         {{"Openness": 50, "Conscientiousness": 50, "Extraversion": 50, "Agreeableness": 50, "Neuroticism": 50}}
-        """
         
         response = model.generate_content(prompt)
         
-        # JSON Extracting logic (agar AI markdown blocks use kare tab bhi chalega)
+        # JSON Cleaning
         json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
         if json_match:
             data = json.loads(json_match.group())
-            # Ensure all values are floats/ints
             return {k: float(v) for k, v in data.items()}
         return None
     except Exception as e:
@@ -60,9 +64,10 @@ def get_personality_analysis(text):
         return None
 
 def build_avatar(traits, gender):
-    """Maps Big Five traits to visual avatar components."""
-    # Logic mapping
-    # 1. Emotions
+    """Maps Big Five traits to visual components."""
+    options = {}
+    
+    # Logic: Agreeableness/Neuroticism -> Expression
     if traits.get('Neuroticism', 0) > 70:
         eye_type, mouth_type = pa.EyesType.WORRIED, pa.MouthType.SAD
     elif traits.get('Agreeableness', 0) > 60:
@@ -70,7 +75,7 @@ def build_avatar(traits, gender):
     else:
         eye_type, mouth_type = pa.EyesType.DEFAULT, pa.MouthType.DEFAULT
 
-    # 2. Outfit
+    # Logic: Conscientiousness/Openness -> Outfit
     if traits.get('Conscientiousness', 0) > 75:
         clothe_type = pa.ClotheType.BLAZER_SHIRT
     elif traits.get('Openness', 0) > 70:
@@ -78,10 +83,7 @@ def build_avatar(traits, gender):
     else:
         clothe_type = pa.ClotheType.HOODIE
 
-    # 3. Style based on Openness
-    acc_type = pa.AccessoriesType.PRESCRIPTION_02 if traits.get('Openness', 0) > 80 else pa.AccessoriesType.DEFAULT
-
-    # 4. Gendered Hair
+    # Hair Logic
     if gender == "Female":
         top_type = pa.TopType.LONG_HAIR_CURVY if traits.get('Extraversion', 0) > 60 else pa.TopType.LONG_HAIR_BOB
     else:
@@ -93,7 +95,6 @@ def build_avatar(traits, gender):
         eye_type=eye_type,
         mouth_type=mouth_type,
         clothe_type=clothe_type,
-        accessories_type=acc_type,
         skin_color=random.choice(list(pa.SkinColor)),
         hair_color=random.choice(list(pa.HairColor))
     )
@@ -101,22 +102,22 @@ def build_avatar(traits, gender):
 # --- UI INTERFACE ---
 
 st.title("🧠 Persona-to-Avatar Generator")
-st.write("Apne baare mein likho aur AI aapka personality avatar create karega.")
+st.write("Write about yourself and watch AI build your digital twin.")
 
 with st.sidebar:
-    st.header("👤 User Info")
+    st.header("👤 User Details")
     user_name = st.text_input("Name", "User")
     user_gender = st.selectbox("Gender", ["Male", "Female"])
     st.divider()
-    st.info("Avatar ke expressions aur kapde aapke 'Big Five' scores par base hain.")
+    st.info("The avatar's mood and outfit adapt to your Big Five personality scores.")
 
-user_input = st.text_area("Tell us about yourself (Hobbies, work style, feelings):", height=150)
+user_input = st.text_area("Tell us about yourself:", height=150, placeholder="I love exploring new places and keep my workspace very neat...")
 
-if st.button("Generate My Vibe 🚀", use_container_width=True):
+if st.button("Generate My Avatar 🚀", use_container_width=True):
     if not user_input.strip():
-        st.warning("Pehle kuch likho toh sahi, bro!")
+        st.warning("Please enter a description.")
     else:
-        with st.spinner("AI is analyzing your DNA (well, your text)..."):
+        with st.spinner("Analyzing personality..."):
             traits = get_personality_analysis(user_input)
             
             if traits:
@@ -125,7 +126,6 @@ if st.button("Generate My Vibe 🚀", use_container_width=True):
                 
                 with col1:
                     st.subheader("📊 Personality Profile")
-                    # Chart formatting
                     fig, ax = plt.subplots(figsize=(10, 6))
                     names = list(traits.keys())
                     values = list(traits.values())
@@ -133,12 +133,12 @@ if st.button("Generate My Vibe 🚀", use_container_width=True):
                     
                     ax.barh(names, values, color=colors)
                     ax.set_xlim(0, 100)
-                    ax.set_title(f"{user_name}'s Big Five Scores")
+                    ax.set_title(f"Big Five Scores for {user_name}")
                     st.pyplot(fig)
                     st.json(traits)
 
                 with col2:
-                    st.subheader("🎭 Your Avatar")
+                    st.subheader("🎭 Your Custom Avatar")
                     avatar = build_avatar(traits, user_gender)
                     
                     filename = f"avatar_{uuid.uuid4().hex}.png"
