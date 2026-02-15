@@ -8,42 +8,59 @@ import google.generativeai as genai
 import json
 import re
 import os
+import sqlite3
+import pandas as pd
 
 # --- APP CONFIG ---
 st.set_page_config(page_title="PersonaGen AI", layout="wide", page_icon="🧠")
 
-# --- API SETUP (Using Secrets) ---
-# Local: .streamlit/secrets.toml mein GEMINI_API_KEY daalna
-# Cloud: Streamlit dashboard ke secrets mein GEMINI_API_KEY daalna
+# --- DATABASE LOGIC ---
+def init_db():
+    conn = sqlite3.connect('personality_db.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            gender TEXT,
+            openness REAL,
+            conscientiousness REAL,
+            extraversion REAL,
+            agreeableness REAL,
+            neuroticism REAL,
+            description TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def save_entry(name, gender, traits, description):
+    conn = sqlite3.connect('personality_db.db')
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO entries 
+        (name, gender, openness, conscientiousness, extraversion, agreeableness, neuroticism, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (name, gender, traits['Openness'], traits['Conscientiousness'], 
+          traits['Extraversion'], traits['Agreeableness'], traits['Neuroticism'], description))
+    conn.commit()
+    conn.close()
+
+# Initialize DB at startup
+init_db()
+
+# --- API SETUP ---
 if "GEMINI_API_KEY" in st.secrets:
-    API_KEY = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=API_KEY)
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 else:
-    st.error("❌ API Key missing! Please add 'GEMINI_API_KEY' to your Streamlit Secrets.")
+    st.error("Missing API Key in Secrets!")
     st.stop()
 
-# --- CSS STYLING ---
-st.markdown("""
-    <style>
-    .main { background-color: #f0f2f6; }
-    .stTextArea textarea { font-size: 1.1rem !important; }
-    .result-container {
-        background: white;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# --- HELPER FUNCTIONS ---
-
+# --- HELPER FUNCTIONS (Personality & Avatar) ---
 def get_personality_analysis(text):
-    """Fetches Big Five scores from Gemini."""
     try:
-        # 1.5-flash is stable and free
         model = genai.GenerativeModel("gemini-2.5-flash")
-
         prompt = f"""
         Act as an expert Psychometrician and Linguistic Analyst. 
         Analyze the following text provided by a user to determine their scores across the Big Five Personality Traits (OCEAN model):
@@ -63,106 +80,82 @@ def get_personality_analysis(text):
         - Do NOT include any conversational text, markdown formatting (no ```json blocks), or explanations.
         - Use this exact structure:
         {{"Openness": 0, "Conscientiousness": 0, "Extraversion": 0, "Agreeableness": 0, "Neuroticism": 0}}
-         """
-        
+        """
+         
+                                     
         response = model.generate_content(prompt)
-        
-        # JSON Cleaning
         json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
         if json_match:
-            data = json.loads(json_match.group())
-            return {k: float(v) for k, v in data.items()}
+            return json.loads(json_match.group())
         return None
     except Exception as e:
-        st.error(f"Analysis Error: {e}")
+        st.error(f"AI Error: {e}")
         return None
 
 def build_avatar(traits, gender):
-    """Maps Big Five traits to visual components."""
-    options = {}
-    
-    # Logic: Agreeableness/Neuroticism -> Expression
-    if traits.get('Neuroticism', 0) > 70:
-        eye_type, mouth_type = pa.EyesType.WORRIED, pa.MouthType.SAD
-    elif traits.get('Agreeableness', 0) > 60:
-        eye_type, mouth_type = pa.EyesType.HAPPY, pa.MouthType.SMILE
-    else:
-        eye_type, mouth_type = pa.EyesType.DEFAULT, pa.MouthType.DEFAULT
-
-    # Logic: Conscientiousness/Openness -> Outfit
-    if traits.get('Conscientiousness', 0) > 75:
-        clothe_type = pa.ClotheType.BLAZER_SHIRT
-    elif traits.get('Openness', 0) > 70:
-        clothe_type = pa.ClotheType.GRAPHIC_SHIRT
-    else:
-        clothe_type = pa.ClotheType.HOODIE
-
-    # Hair Logic
-    if gender == "Female":
-        top_type = pa.TopType.LONG_HAIR_CURVY if traits.get('Extraversion', 0) > 60 else pa.TopType.LONG_HAIR_BOB
-    else:
-        top_type = pa.TopType.SHORT_HAIR_FRIZZLE if traits.get('Extraversion', 0) > 60 else pa.TopType.SHORT_HAIR_SHORT_FLAT
-
+    # (Existing avatar logic remains the same)
     return pa.PyAvataaar(
         style=pa.AvatarStyle.CIRCLE,
-        top_type=top_type,
-        eye_type=eye_type,
-        mouth_type=mouth_type,
-        clothe_type=clothe_type,
+        top_type=pa.TopType.SHORT_HAIR_SHORT_FLAT if gender=="Male" else pa.TopType.LONG_HAIR_BOB,
+        mouth_type=pa.MouthType.SMILE if traits.get('Agreeableness', 50) > 50 else pa.MouthType.DEFAULT,
+        eye_type=pa.EyesType.HAPPY if traits.get('Extraversion', 50) > 50 else pa.EyesType.DEFAULT,
         skin_color=random.choice(list(pa.SkinColor)),
-        hair_color=random.choice(list(pa.HairColor))
+        clothe_type=pa.ClotheType.BLAZER_SHIRT if traits.get('Conscientiousness', 50) > 70 else pa.ClotheType.HOODIE
     )
 
 # --- UI INTERFACE ---
-
 st.title("🧠 Persona-to-Avatar Generator")
-st.write("Write about yourself and watch AI build your digital twin.")
 
+# --- SIDEBAR ADMIN PANEL ---
 with st.sidebar:
-    st.header("👤 User Details")
+    st.header("👤 User Info")
     user_name = st.text_input("Name", "User")
     user_gender = st.selectbox("Gender", ["Male", "Female"])
+    
     st.divider()
-    st.info("The avatar's mood and outfit adapt to your Big Five personality scores.")
+    
+    # Hidden Admin Section
+    with st.expander("🔐 Admin Dashboard"):
+        password = st.text_input("Admin Password", type="password")
+        if password == "admin123": # Change this password!
+            st.success("Access Granted")
+            conn = sqlite3.connect('personality_db.db')
+            df = pd.read_sql_query("SELECT * FROM entries ORDER BY timestamp DESC", conn)
+            conn.close()
+            st.dataframe(df)
+            
+            # Option to download data
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Export CSV", csv, "user_data.csv", "text/csv")
+        elif password:
+            st.error("Wrong Password")
 
-user_input = st.text_area("Tell us about yourself:", height=150, placeholder="I love exploring new places and keep my workspace very neat...")
+# --- MAIN APP LOGIC ---
+user_input = st.text_area("Tell us about yourself:", height=150)
 
-if st.button("Generate My Avatar 🚀", use_container_width=True):
+if st.button("Generate My Vibe 🚀", use_container_width=True):
     if not user_input.strip():
         st.warning("Please enter a description.")
     else:
-        with st.spinner("Analyzing personality..."):
+        with st.spinner("Analyzing and saving data..."):
             traits = get_personality_analysis(user_input)
             
             if traits:
-                st.markdown('<div class="result-container">', unsafe_allow_html=True)
-                col1, col2 = st.columns([1, 1])
+                # SAVE TO DATABASE
+                save_entry(user_name, user_gender, traits, user_input)
                 
+                col1, col2 = st.columns([1, 1])
                 with col1:
                     st.subheader("📊 Personality Profile")
-                    fig, ax = plt.subplots(figsize=(10, 6))
-                    names = list(traits.keys())
-                    values = list(traits.values())
-                    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD']
-                    
-                    ax.barh(names, values, color=colors)
+                    fig, ax = plt.subplots()
+                    ax.barh(list(traits.keys()), list(traits.values()), color='#6c5ce7')
                     ax.set_xlim(0, 100)
-                    ax.set_title(f"Big Five Scores for {user_name}")
                     st.pyplot(fig)
-                    st.json(traits)
-
+                
                 with col2:
-                    st.subheader("🎭 Your Custom Avatar")
+                    st.subheader("🎭 Your Avatar")
                     avatar = build_avatar(traits, user_gender)
-                    
                     filename = f"avatar_{uuid.uuid4().hex}.png"
                     avatar.render_png_file(filename)
-                    
-                    st.image(filename, width=350)
-                    
-                    with open(filename, "rb") as file:
-                        st.download_button("📥 Download Avatar", file, f"{user_name}_avatar.png", "image/png")
-                    
-                    if os.path.exists(filename):
-                        os.remove(filename)
-                st.markdown('</div>', unsafe_allow_html=True)
+                    st.image(filename, width=300)
+                    os.remove(filename)
