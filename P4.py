@@ -120,7 +120,7 @@ with st.sidebar:
         if password == "admin123": # Change this password!
             st.success("Access Granted")
             conn = sqlite3.connect('personality_db.db')
-            df = pd.read_sql_query("SELECT * FROM entries ORDER BY timestamp DESC", conn)
+            df = pd.read_sql_query("SELECT * FROM entries ORDER BY id ASC", conn)
             conn.close()
             st.dataframe(df)
             
