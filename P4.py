@@ -48,7 +48,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Google Gemini API setup
-GOOGLE_API_KEY = #your api key 
+GOOGLE_API_KEY = AIzaSyBv1rh97bKNEfVaaPGWyIZ9HhCX7RkBMeE
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # Gemini call for personality classification
