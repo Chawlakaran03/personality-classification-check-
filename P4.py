@@ -43,14 +43,27 @@ def get_personality_analysis(text):
     try:
         # 1.5-flash is stable and free
         model = genai.GenerativeModel("gemini-2.5-flash")
-        
-        prompt = (
-        "Analyze the following text and evaluate the author's personality using the Big Five model."
-        "Provide scores from 0 to 100 for each trait."
-        f"Text: {text}"
-        "Return ONLY a flat JSON object:"
-        f"{{"Openness": 50, "Conscientiousness": 50, "Extraversion": 50, "Agreeableness": 50, "Neuroticism": 50}}"
-         )
+
+        prompt = f"""
+        Act as an expert Psychometrician and Linguistic Analyst. 
+        Analyze the following text provided by a user to determine their scores across the Big Five Personality Traits (OCEAN model):
+
+        User Text: "{text}"
+
+        Your goal is to infer personality characteristics based on word choice, tone, and sentence structure. 
+        Provide a score from 0 to 100 for each of the following:
+        1. Openness: (Curiosity, imagination, and willingness to try new things).
+        2. Conscientiousness: (Organization, dependability, and discipline).
+        3. Extraversion: (Sociability, energy, and outgoingness).
+        4. Agreeableness: (Trust, kindness, and cooperation).
+        5. Neuroticism: (Emotional sensitivity and tendency toward stress).
+
+        STRICT OUTPUT RULES:
+        - Return ONLY a valid, flat JSON object.
+        - Do NOT include any conversational text, markdown formatting (no ```json blocks), or explanations.
+        - Use this exact structure:
+        {{"Openness": 0, "Conscientiousness": 0, "Extraversion": 0, "Agreeableness": 0, "Neuroticism": 0}}
+         """
         
         response = model.generate_content(prompt)
         
