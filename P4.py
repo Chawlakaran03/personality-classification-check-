@@ -54,7 +54,7 @@ genai.configure(api_key=GOOGLE_API_KEY)
 # Gemini call for personality classification
 def classify_personality_api(sentence):
     try:
-        model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
         response = model.generate_content(
             f"Classify the following text based on the Big Five Personality Traits. "
             f"Provide a JSON-like format for the traits and their scores out of 100:\n\n{sentence}")
