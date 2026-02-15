@@ -10,152 +10,133 @@ import google.generativeai as genai
 import json
 import re
 
-# Streamlit page setup
+# 1. Page Configuration
 st.set_page_config(page_title="🧠 Personality & Avatar Generator", layout="centered")
 
-# --- API SETUP ---
-# On Streamlit Cloud: Add GOOGLE_API_KEY to Settings > Secrets
-# Locally: Create .streamlit/secrets.toml and add GOOGLE_API_KEY = "your_key"
+# 2. Secure API Setup (GitHub Safe)
 try:
-    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
-    genai.configure(api_key=GOOGLE_API_KEY)
-except Exception:
-    st.error("API Key not found. Please set GOOGLE_API_KEY in Streamlit Secrets.")
+    if "GOOGLE_API_KEY" in st.secrets:
+        genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+    else:
+        st.error("API Key missing! Add GOOGLE_API_KEY to Streamlit Secrets.")
+        st.stop()
+except Exception as e:
+    st.error("Secrets not configured. Create .streamlit/secrets.toml locally.")
     st.stop()
 
-# Custom CSS
+# 3. Custom CSS for Styling
 st.markdown("""
     <style>
     .main { background: linear-gradient(to right, #f0f2f6, #e0e7ff); padding: 2rem; border-radius: 15px; }
     .title { text-align: center; font-size: 2.2rem; font-weight: 700; color: #4a4a4a; }
-    .subtitle { text-align: center; font-size: 1.1rem; color: #6b6b6b; }
-    .avatar-box, .trait-box { border-radius: 10px; padding: 1rem; background-color: #ffffffaa; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    .avatar-box, .trait-box { 
+        border-radius: 10px; padding: 1.5rem; 
+        background-color: #ffffffaa; 
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
+        margin-top: 20px; text-align: center;
+    }
     </style>
 """, unsafe_allow_html=True)
 
+# 4. Gemini API Call
 def classify_personality_api(sentence):
     try:
-        # Note: Use gemini-1.5-flash as 2.5 does not exist yet
         model = genai.GenerativeModel(model_name="gemini-1.5-flash")
         prompt = (
-        """ Analyze the following text and evaluate the author's personality using the Big Five model."
-        "Provide scores from 0 to 100 for each trait."
-        f"Text: {text}"
-        "Return ONLY a flat JSON object:"
-        f"{{"Openness": 50, "Conscientiousness": 50, "Extraversion": 50, "Agreeableness": 50, "Neuroticism": 50}}"
-        """)
+            "Analyze this text for Big Five Personality Traits. "
+            "Return ONLY a clean JSON object with traits as keys and scores (0-100) as values. "
+            "Traits: Openness, Conscientiousness, Extraversion, Agreeableness, Neuroticism. "
+            f"Text: {sentence}"
+        )
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
         return f"Error: {str(e)}"
 
+# 5. Robust JSON Parsing & Plotting
 def plot_personality_traits(traits_text):
     try:
-        # Clean the response: remove markdown code blocks
-        cleaned = re.sub(r'```json|```', '', traits_text).strip()
-        
-        # Find the JSON structure
-        json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        # Regex to find the JSON block even if there is text around it
+        json_match = re.search(r'\{.*\}', traits_text, re.DOTALL)
         if not json_match:
-            st.warning("Could not parse traits. Try a more detailed description.")
-            return
+            st.error("Could not parse traits. Try a more detailed description.")
+            return None
 
         traits_dict = json.loads(json_match.group())
-
-        # Ensure we only plot valid numeric data
+        
+        # Clean data (ensure numbers)
         names = list(traits_dict.keys())
-        values = [float(v) for v in traits_dict.values()]
+        values = [float(str(v).replace('%', '')) for v in traits_dict.values()]
 
+        # Create Plot
         fig, ax = plt.subplots(figsize=(8, 4))
-        colors = plt.cm.Paired(range(len(names)))
+        colors = plt.cm.viridis([i/5 for i in range(5)])
         ax.bar(names, values, color=colors)
         ax.set_ylim(0, 100)
-        ax.set_ylabel("Score")
-        ax.set_title("Big Five Personality Profile")
+        ax.set_ylabel("Score (0-100)")
         plt.xticks(rotation=15)
         st.pyplot(fig)
-        return traits_dict # Return for text display if needed
-
+        return traits_dict
     except Exception as e:
-        st.error(f"Visualization error: {str(e)}")
+        st.error(f"Visualization Error: {e}")
         return None
 
-def create_avatar_by_sentence_and_gender(sentence, gender):
+# 6. Avatar Generation Logic
+def create_avatar(sentence, gender):
     try:
         s_low = sentence.lower()
-        options = {
-            'style': 'CIRCLE' if "calm" in s_low else 'TRANSPARENT',
-            'skin_color': random.choice(list(pa.SkinColor)),
-            'hair_color': random.choice(list(pa.HairColor)),
-            'mouth_type': pa.MouthType.SMILE if any(x in s_low for x in ["happy", "calm", "social"]) else pa.MouthType.DEFAULT,
-            'eye_type': pa.EyesType.HAPPY if any(x in s_low for x in ["positive", "calm", "open"]) else pa.EyesType.DEFAULT,
-            'eyebrow_type': random.choice(list(pa.EyebrowType)),
-            'accessories_type': pa.AccessoriesType.SUNGLASSES if "cool" in s_low else pa.AccessoriesType.DEFAULT,
-            'clothe_type': pa.ClotheType.HOODIE if "relaxed" in s_low else pa.ClotheType.BLAZER_SHIRT,
-            'clothe_graphic_type': random.choice(list(pa.ClotheGraphicType))
-        }
-
-        if gender == "Female":
-            top = random.choice([pa.TopType.LONG_HAIR_BOB, pa.TopType.LONG_HAIR_BUN, pa.TopType.LONG_HAIR_CURVY])
-        else:
-            top = random.choice([pa.TopType.SHORT_HAIR_FRIZZLE, pa.TopType.SHORT_HAIR_SHORT_CURLY, pa.TopType.SHORT_HAIR_SHAGGY_MULLET])
-
+        # Logic for avatar features based on description keywords
         avatar = pa.PyAvataaar(
-            style=options['style'] if isinstance(options['style'], pa.AvatarStyle) else getattr(pa.AvatarStyle, options['style']),
-            skin_color=options['skin_color'],
-            top_type=top,
-            hair_color=options['hair_color'],
-            mouth_type=options['mouth_type'],
-            eye_type=options['eye_type'],
-            eyebrow_type=options['eyebrow_type'],
-            accessories_type=options['accessories_type'],
-            clothe_type=options['clothe_type'],
-            clothe_graphic_type=options['clothe_graphic_type']
+            style=pa.AvatarStyle.CIRCLE if "calm" in s_low else pa.AvatarStyle.TRANSPARENT,
+            skin_color=random.choice(list(pa.SkinColor)),
+            top_type=random.choice([pa.TopType.LONG_HAIR_BOB, pa.TopType.LONG_HAIR_BUN]) if gender == "Female" 
+                     else random.choice([pa.TopType.SHORT_HAIR_FRIZZLE, pa.TopType.SHORT_HAIR_SHORT_CURLY]),
+            hair_color=random.choice(list(pa.HairColor)),
+            mouth_type=pa.MouthType.SMILE if any(x in s_low for x in ["happy", "good", "chill"]) else pa.MouthType.DEFAULT,
+            eye_type=pa.EyesType.HAPPY if "positive" in s_low else pa.EyesType.DEFAULT,
+            clothe_type=pa.ClotheType.HOODIE if "relaxed" in s_low else pa.ClotheType.BLAZER_SHIRT,
         )
         return avatar
     except Exception as e:
-        st.error(f"Avatar generation failed: {e}")
+        st.error(f"Avatar Error: {e}")
         return None
 
-def imagedownload(filename):
-    if os.path.exists(filename):
-        with open(filename, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode()
-            return f'<a href="data:image/png;base64,{b64}" download="{filename}" style="text-decoration:none; background-color:#6c5ce7; color:white; padding:10px 20px; border-radius:5px;">📥 Download Avatar</a>'
-    return ""
+def get_image_download_link(filename):
+    with open(filename, "rb") as f:
+        data = base64.b64encode(f.read()).decode()
+    return f'<a href="data:image/png;base64,{data}" download="{filename}" style="padding: 10px; background-color: #6c5ce7; color: white; border-radius: 5px; text-decoration: none;">📥 Download Avatar</a>'
 
-# --- UI ---
+# 7. UI Layout
 st.markdown('<div class="main">', unsafe_allow_html=True)
-st.markdown('<div class="title">🧠 Personality Classifier & 🎭 Avatar</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Describe your personality and let AI visualize you!</div><br>', unsafe_allow_html=True)
+st.markdown('<div class="title">🧠 AI Personality & Avatar</div>', unsafe_allow_html=True)
 
-with st.form("user_form"):
-    col1, col2 = st.columns(2)
-    name = col1.text_input("🧑 Your Name", placeholder="e.g. Alex")
-    gender = col2.radio("⚧️ Gender", ["Male", "Female"], horizontal=True)
-    description = st.text_area("✍️ Describe yourself (hobbies, mood, vibes)...")
-    submitted = st.form_submit_button("🔍 Analyze & Generate")
+with st.form("main_form"):
+    name = st.text_input("🧑 Name")
+    gender = st.radio("⚧️ Gender", ["Male", "Female"], horizontal=True)
+    desc = st.text_area("✍️ Describe yourself...")
+    submit = st.form_submit_button("Analyze & Generate")
 
-if submitted:
-    if not name or not description:
-        st.warning("Please fill in all fields.")
-    else:
-        with st.spinner("Analyzing traits..."):
-            raw_traits = classify_personality_api(description)
-            
+if submit:
+    if name and desc:
+        with st.spinner("Processing..."):
+            # Trait Analysis Section
             st.markdown('<div class="trait-box">', unsafe_allow_html=True)
-            st.subheader(f"📊 Insights for {name}")
-            parsed_data = plot_personality_traits(raw_traits)
+            st.subheader(f"Analysis for {name}")
+            raw_result = classify_personality_api(desc)
+            plot_personality_traits(raw_result)
             st.markdown('</div>', unsafe_allow_html=True)
 
+            # Avatar Section
             st.markdown('<div class="avatar-box">', unsafe_allow_html=True)
-            st.subheader("🎭 Your Avatar")
-            avatar = create_avatar_by_sentence_and_gender(description, gender)
-            if avatar:
-                fname = f"avatar_{uuid.uuid4().hex}.png"
-                avatar.render_png_file(fname)
-                st.image(fname, width=250)
-                st.markdown(imagedownload(fname), unsafe_allow_html=True)
+            st.subheader("Your Custom Avatar")
+            my_avatar = create_avatar(desc, gender)
+            if my_avatar:
+                temp_name = f"{uuid.uuid4().hex}.png"
+                my_avatar.render_png_file(temp_name)
+                st.image(temp_name, width=250)
+                st.markdown(get_image_download_link(temp_name), unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.warning("Please fill in all details!")
 
 st.markdown('</div>', unsafe_allow_html=True)
