@@ -9,17 +9,16 @@ import json
 import re
 import os
 
-# --- APP CONFIG ---
 st.set_page_config(page_title="PersonaGen AI", layout="wide")
 
 # Replace with your actual key or use st.secrets
-API_KEY = "AIzaSyBv1rh97bKNEfVaaPGWyIZ9HhCX7RkBMeE"
+API_KEY = AIzaSyBv1rh97bKNEfVaaPGWyIZ9HhCX7RkBMeE
 
-if API_KEY != "AIzaSyBv1rh97bKNEfVaaPGWyIZ9HhCX7RkBMeE" :
+if API_KEY != AIzaSyBv1rh97bKNEfVaaPGWyIZ9HhCX7RkBMeE:
     genai.configure(api_key=API_KEY)
 
 # --- CSS STYLING ---
-st.markdown("""
+st.markdown(
     <style>
     .main { background-color: #f0f2f6; }
     .stTextArea textarea { font-size: 1.1rem !important; }
@@ -30,25 +29,25 @@ st.markdown("""
         box-shadow: 2px 2px 10px rgba(0,0,0,0.05);
     }
     </style>
-""", unsafe_allow_html=True)
+, unsafe_allow_html=True)
 
 # --- HELPER FUNCTIONS ---
 
 def get_personality_analysis(text):
     """Fetches Big Five scores from Gemini."""
-    if API_KEY == "AIzaSyBv1rh97bKNEfVaaPGWyIZ9HhCX7RkBMeE":
+    if API_KEY == AIzaSyBv1rh97bKNEfVaaPGWyIZ9HhCX7RkBMeE :
         st.error("Please provide a valid Gemini API Key in the code.")
         return None
         
     try:
         model = genai.GenerativeModel("gemini-2.5-flash")
-        prompt = f"""
+        prompt = f
         Analyze the following text and evaluate the author's personality using the Big Five model.
         Provide scores from 0 to 100.
         Text: "{text}"
         Return ONLY a JSON object:
         {{"Openness": 0, "Conscientiousness": 0, "Extraversion": 0, "Agreeableness": 0, "Neuroticism": 0}}
-        """
+        
         response = model.generate_content(prompt)
         # Clean JSON string
         json_str = re.search(r'\{.*\}', response.text, re.DOTALL).group()
