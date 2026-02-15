@@ -25,7 +25,7 @@ This AI-driven web application takes a user’s personality description and:
 
 👉 [Open the App on Streamlit 🚀](https://personality-classification-check.streamlit.app/)
 
-## 📂 GitHub Repo
+## 📂 GitHub Repo 
 
 🔧 [View Source Code on GitHub](https://github.com/Chawlakaran03/personality-classification-check-/tree/main)
 
