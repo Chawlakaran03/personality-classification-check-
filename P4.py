@@ -63,30 +63,46 @@ def classify_personality_api(sentence):
         return f"Error: {str(e)}"
 
 # Trait plot (Bar chart)
-def plot_personality_traits(traits_text):
+def plot_personality_traits(traits_data):
     try:
-        # Remove markdown or code block formatting
-        cleaned = traits_text.strip()
+        # Check if traits_data is a string (JSON) or already a dict
+        if isinstance(traits_data, str):
+            # Clean markdown formatting if Gemini included it
+            clean_json = re.search(r'\{.*\}', traits_data, re.DOTALL).group()
+            traits_dict = json.loads(clean_json)
+        else:
+            traits_dict = traits_data
 
-        # Extract JSON-like block from the Gemini response
-        json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
-        if not json_match:
-            st.warning("Couldn't extract JSON traits from response.")
-            return
+        # Ensure all values are numeric (sometimes AI returns strings)
+        processed_traits = {k: float(v) for k, v in traits_dict.items() if k != "Error"}
 
-        traits_dict = json.loads(json_match.group())
+        # Creating the Plot
+        fig, ax = plt.subplots(figsize=(8, 5))
+        
+        # Use a nice color palette
+        colors = ['#6c5ce7', '#00cec9', '#fab1a0', '#fd79a8', '#55efc4']
+        
+        keys = list(processed_traits.keys())
+        values = list(processed_traits.values())
 
-        # Plotting
-        fig, ax = plt.subplots(figsize=(6, 4))
-        ax.bar(traits_dict.keys(), traits_dict.values(), color="#6c5ce7")
+        bars = ax.bar(keys, values, color=colors[:len(keys)])
+        
+        # Formatting
         ax.set_ylim(0, 100)
-        ax.set_ylabel("Score")
-        ax.set_title("Big Five Personality Traits")
+        ax.set_ylabel("Score (0-100)")
+        ax.set_title("Big Five Personality Analysis", fontsize=14, fontweight='bold')
         plt.xticks(rotation=45)
+        
+        # Add value labels on top of bars
+        for bar in bars:
+            yval = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2, yval + 1, int(yval), ha='center', va='bottom')
+
         st.pyplot(fig)
 
     except Exception as e:
         st.error(f"Visualization error: {str(e)}")
+        st.write("Raw data received:", traits_data) # Helps you debug what went wrong
 # Avatar generator
 def create_avatar_by_sentence_and_gender(sentence, gender):
     try:
