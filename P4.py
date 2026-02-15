@@ -27,7 +27,7 @@ except Exception:
 
 def classify_personality_api(sentence):
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         # Prompt ko thoda aur sakht kar diya hai
         prompt = (
             "Analyze this personality description: " + sentence + "\n\n"
