@@ -41,7 +41,7 @@ st.markdown("""
 # 4. Gemini API Call
 def classify_personality_api(sentence):
     try:
-        model = genai.GenerativeModel(model_name="gemini-2.5-pro")
+        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
         prompt = (
             "Analyze this text for Big Five Personality Traits. "
             "Return ONLY a clean JSON object with traits as keys and scores (0-100) as values. "
