@@ -38,9 +38,11 @@ def classify_personality_api(sentence):
         # Note: Use gemini-1.5-flash as 2.5 does not exist yet
         model = genai.GenerativeModel(model_name="gemini-1.5-flash")
         prompt = (
-            "Classify the following text based on the Big Five Personality Traits (Openness, Conscientiousness, Extraversion, Agreeableness, Neuroticism). "
-            "Return ONLY a raw JSON object with trait names as keys and scores (0-100) as values. "
-            f"Text: {sentence}"
+        "Analyze the following text and evaluate the author's personality using the Big Five model."
+        "Provide scores from 0 to 100 for each trait."
+        f"Text: {text}"
+        "Return ONLY a flat JSON object:"
+        f"{{"Openness": 50, "Conscientiousness": 50, "Extraversion": 50, "Agreeableness": 50, "Neuroticism": 50}}"
         )
         response = model.generate_content(prompt)
         return response.text
